@@ -110,7 +110,6 @@ def evaluate_samples(t_sample, gt_t, type_sample, event_type, opt):
 
     # compute both coverage 
     coverage_single = torch.sum((gt_t.unsqueeze(0) < t_sample_q[:-1])*non_pad_mask[:,1:].squeeze(2),(1,2))
-    coverage_double = torch.tensor([torch.sum(((gt_t > t_sample_q[i])&(gt_t < t_sample_q[-i-2]))*non_pad_mask[:,1:].squeeze(2)) for i in range(int(len(eval_quantile)/2))])
     # compute interval length
     q_idx = int(len(eval_quantile)/2)
     intlen = t_sample_q.clamp(min=0.).sum((1,2))[:-1]
@@ -119,14 +118,17 @@ def evaluate_samples(t_sample, gt_t, type_sample, event_type, opt):
     crps = torch.abs(t_sample-gt_t.unsqueeze(2)).mean(2) - torch.abs(t_sample.unsqueeze(3)-t_sample.unsqueeze(2)).sum((2,3))/2/num_samples**2
     crps = (crps * non_pad_mask[:, 1:].squeeze(2)).sum()
 
-    # compute corr_type and ece
+    # compute corr_type
     type_sample, mode, _ = type_sample
     truth = event_type[:, 1:] - 1
-    ece_loss = ECELoss(n_bins=int(len(opt.eval_quantile)/2),opt=opt)
-    ece, corr_type, accuracy_list = ece_loss(type_sample,truth,non_pad_mask.squeeze(-1), mode)
-    # print(len(accuracy_list))
+    if mode in ['logit', 'intensity']:
+        predictions = torch.max(softmaxes, -1)[1]
+    else:
+        predictions = torch.mode(type_sample, 2)[0]
+    # print(predictions.size(),truth.size())
+    corr_type = (predictions.eq(truth)*non_pad_mask[:,1:].squeeze(2)).sum()
 
-    return coverage_single.cpu(), coverage_double.cpu(), intlen.cpu(), crps, corr_type, ece, accuracy_list
+    return coverage_single.cpu(), intlen.cpu(), crps, corr_type
 
 def predict_langevin_smurf(model, event_time, time_gap, event_type, prediction, opt, sample_init):
 

@@ -121,8 +121,6 @@ def eval_epoch(model, validation_data, pred_loss_func, eval_langevin, train_samp
     total_event_rate = 0  # cumulative number of correct prediction
     total_num_event = 0  # number of total events
     total_num_pred = 0  # number of predictions
-
-    total_coverage_double = torch.zeros(int(len(opt.eval_quantile)/2))
     total_coverage_single = torch.zeros(len(opt.eval_quantile))
     total_intlen = torch.zeros(len(opt.eval_quantile))
     total_crps = 0 
@@ -160,7 +158,7 @@ def eval_epoch(model, validation_data, pred_loss_func, eval_langevin, train_samp
 
     best_results = None
     # record results in every langevin step
-    results_all = {'n_steps':[],'cs':[], 'accuracy':[], 'crps': [], 'intlen': [], 'coverage': [],'ece':[],'accuracy_list':[]}
+    results_all = {'n_steps':[],'cs':[], 'accuracy':[], 'crps': [], 'intlen': [], 'coverage': []}
     if eval_langevin:
         # Langevin dynamics !!!!
         # Save samples every n_save_steps
@@ -172,7 +170,6 @@ def eval_epoch(model, validation_data, pred_loss_func, eval_langevin, train_samp
             while cur_step < (opt.n_steps + langevin_init_step):
                 if (cur_step + opt.n_save_steps) >= (opt.n_steps + langevin_init_step):
                     opt.is_last = True
-                total_coverage_double = torch.zeros(int(len(opt.eval_quantile)/2))
                 total_coverage_single = torch.zeros(len(opt.eval_quantile))
                 total_intlen = torch.zeros(len(opt.eval_quantile))
                 total_correct_list = torch.zeros(int(len(opt.eval_quantile)/2))
@@ -194,13 +191,10 @@ def eval_epoch(model, validation_data, pred_loss_func, eval_langevin, train_samp
 
                     # langevin dynamics only proceed n_save_steps (for saving purpose), not n_steps
                     t_sample, gt_t, type_sample = Utils.predict_langevin(model, event_time, time_gap, event_type, prediction, opt, (last_sample[0][idx],last_sample[1][idx]) if last_sample is not None else None)
-                    coverage_single, coverage_double, intlen, crps, corr_type, ece, accuracy_list = Utils.evaluate_samples(t_sample, gt_t, type_sample, event_type, opt)
+                    coverage_single, intlen, crps, corr_type = Utils.evaluate_samples(t_sample, gt_t, type_sample, event_type, opt)
                     
-                    total_coverage_double += coverage_double
                     total_coverage_single += coverage_single
                     total_intlen += intlen
-                    total_correct_list += accuracy_list[0].cpu()
-                    total_num_list += accuracy_list[1].cpu()
                     total_crps += crps.item()
                     total_corr_type += corr_type.item()
 
@@ -214,10 +208,8 @@ def eval_epoch(model, validation_data, pred_loss_func, eval_langevin, train_samp
 
                 # note keeping
                 start = time.time()
-                total_coverage_double /= total_num_pred
                 total_coverage_single /= total_num_pred
                 total_intlen /= total_num_pred
-                total_accuracy_list = total_correct_list/(total_num_list+1e-10)
                 total_crps /= total_num_pred
                 total_corr_type /= total_num_pred
                     
@@ -229,22 +221,20 @@ def eval_epoch(model, validation_data, pred_loss_func, eval_langevin, train_samp
                 # XXXXX: save event type
                 print('  - (Sampling) Langevin steps {cur_step}: loss: {ll: 8.5f}, '
                         'Accuracy: {type: 8.5f}, Single-bound calibration score: {cs1: 8.5f}/{csb1: 8.5f}, '
-                        'CRPS: {crps: 8.5f}, Interval Length: {intlen: 8.5f}, ECE: {ece: 8.5f}, elapse: {elapse:3.3f} min'
+                        'CRPS: {crps: 8.5f}, Interval Length: {intlen: 8.5f}, elapse: {elapse:3.3f} min'
                         .format(cur_step=cur_step, ll=total_event_ll / total_num_event, type=total_corr_type, 
-                        cs1=cs_single, csb1=cs_single_big, crps=total_crps, intlen=total_intlen[big_idx_single],ece=total_ece, elapse=(time.time() - start) / 60))
+                        cs1=cs_single, csb1=cs_single_big, crps=total_crps, intlen=total_intlen[big_idx_single], elapse=(time.time() - start) / 60))
                 print('coverage_single: ', total_coverage_single)
                 print('Interval Length: ', total_intlen)
-                print('Accuracy_list: ', total_accuracy_list)
-                results = {'n_steps':cur_step,'cs':(cs_single.item(),cs_single_big.item(),cs_double.item(),cs_double_big.item()), 
+                results = {'n_steps':cur_step,'cs':(cs_single.item(),cs_single_big.item()), 
                     'accuracy':total_corr_type, 'crps': total_crps, 'intlen': total_intlen, 
-                    'coverage': (total_coverage_single, total_coverage_double),'ece':total_ece, 'accuracy_list':total_accuracy_list}
+                    'coverage': (total_coverage_single)}
                 results_all['n_steps'].append(cur_step)
                 results_all['cs'].append(cs_single_big.item())
                 results_all['accuracy'].append(total_corr_type)
                 results_all['crps'].append(total_crps)
                 results_all['intlen'].append(total_intlen[big_idx_single])
                 results_all['coverage'].append(total_coverage_single[big_idx_single])
-                results_all['accuracy_list'].append(total_accuracy_list)
                 if best_results is not None:
                     if results['cs'][1]<best_results['cs'][1]:
                         best_results=results
