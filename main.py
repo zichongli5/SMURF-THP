@@ -11,7 +11,7 @@ import transformer.Constants as Constants
 import Utils as Utils
 
 from preprocess.Dataset import get_dataloader
-from transformer.Models import smurf_thp
+from transformer.Models import Transformer, smurf_thp
 from tqdm import tqdm
 
 # import wandb
@@ -269,7 +269,7 @@ def eval_epoch(model, validation_data, pred_loss_func, eval_langevin, train_samp
 def train(config=None):
     if True:
 
-        print('[Info] parameters: {}'.format(config))
+        # print('[Info] parameters: {}'.format(config))
 
         """ prepare dataloader """
         trainloader, devloader, testloader, num_types, train_sample = prepare_dataloader(config)
